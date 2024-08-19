@@ -71,7 +71,7 @@ def load_hf_model(model_size):
   if model_size == "llama2-7b":
     model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
   elif model_size == "llama3-8b":
-    model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
+    model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
   elif model_size == "mistral-7b":
     model = MistralForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
 
@@ -133,7 +133,7 @@ def convert_state_to_hf(training_state, model_size):
             ,head_dim
             )
         )),
-        dtype=torch.bfloat16
+        dtype=torch.float32
     )
     hf_model_params[f"model.layers.{layer_int}.self_attn.q_proj.weight"] = hf_model_params[f"model.layers.{layer_int}.self_attn.q_proj.weight"].view(base_num_query_heads * head_dim, base_num_query_heads * head_dim).T.view(base_num_query_heads, head_dim // 2, 2, base_num_query_heads * head_dim).transpose(1, 2).reshape(-1, base_num_query_heads * head_dim)
 
@@ -141,7 +141,7 @@ def convert_state_to_hf(training_state, model_size):
         unpermute_from_match_maxtext_rope(
           training_state.params['params']["decoder"]["layers"]["self_attention"]["key"]["kernel"][:, layer_int, :, :]
           )),
-        dtype=torch.bfloat16
+        dtype=torch.float32
     )
     hf_model_params[f"model.layers.{layer_int}.self_attn.k_proj.weight"] = hf_model_params[f"model.layers.{layer_int}.self_attn.k_proj.weight"].view(base_num_query_heads * head_dim, base_num_kv_heads * head_dim).T.reshape(base_num_kv_heads, head_dim // 2, 2, base_num_query_heads * head_dim).transpose(1, 2).reshape(-1 ,base_num_query_heads * head_dim)
 

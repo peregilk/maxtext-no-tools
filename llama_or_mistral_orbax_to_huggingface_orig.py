@@ -63,7 +63,7 @@ def load_hf_model(model_size):
   """
   if model_size == "llama2-7b":
     model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
-  if model_size == "llama3-8b":
+  elif model_size == "llama3-8b":
     model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
   elif model_size == "mistral-7b":
     model = MistralForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
@@ -195,13 +195,10 @@ def convert_orbax_hf(hf_model_path, config):
   hf_model.save_pretrained(hf_model_path, state_dict=new_hf_model_params)
 
 
-
 def main(argv: Sequence[str]):
-
   pyconfig.initialize(argv[:-1])
   #Assuming the last argument is the path to save the converted checkpoint in HuggingFace format
   hf_model_path = argv[-1].split("=")[1]
   print(f"Will save converted HuggingFace checkpoint to path = {hf_model_path}")
-
   convert_orbax_hf(hf_model_path, pyconfig.config)
 
