@@ -2,8 +2,8 @@
 
 # Function to display usage
 usage() {
-    echo "Usage: $0 --checkpoints CHECKPOINTS --checkpoint_names CHECKPOINT_NAMES [--organization ORGANIZATION] [--tokenizer_dir TOKENIZER_DIR]"
-    echo "Example: $0 --checkpoints 10000,20000 --checkpoint_names north_above05,north_above1 --organization north --tokenizer_dir north/llama2-7b-scandi-clean-maxtext-200000"
+    echo "Usage: $0 --checkpoints CHECKPOINTS --checkpoint_names CHECKPOINT_NAMES [--organization ORGANIZATION] [--tokenizer_dir TOKENIZER_DIR] [--model_name MODEL_NAME]"
+    echo "Example: $0 --checkpoints 10000,20000 --checkpoint_names north_above05,north_above1 --organization north --tokenizer_dir north/llama3-8b-reference --model_name llama3-8b"
     exit 1
 }
 
@@ -11,6 +11,7 @@ usage() {
 ORGANIZATION="north"
 TOKENIZER_DIR="north/llama3-8b-reference"
 MODEL_NAME="llama3-8b"
+HOME="/home/perk"
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -19,6 +20,7 @@ while [[ "$#" -gt 0 ]]; do
         --checkpoint_names) CHECKPOINT_NAMES="$2"; shift ;;
         --organization) ORGANIZATION="$2"; shift ;;
         --tokenizer_dir) TOKENIZER_DIR="$2"; shift ;;
+        --model_name) MODEL_NAME="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; usage ;;
     esac
     shift
@@ -33,9 +35,6 @@ fi
 # Convert comma-separated strings to arrays
 IFS=',' read -r -a CHECKPOINT_ARRAY <<< "$CHECKPOINTS"
 IFS=',' read -r -a CHECKPOINT_NAME_ARRAY <<< "$CHECKPOINT_NAMES"
-
-# Set HOME directory
-HOME="/home/perk"
 
 # Iterate through each combination of checkpoints and checkpoint names
 for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
