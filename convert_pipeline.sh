@@ -40,12 +40,24 @@ IFS=',' read -r -a CHECKPOINT_NAME_ARRAY <<< "$CHECKPOINT_NAMES"
 for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
     for CHECKPOINT_NAME in "${CHECKPOINT_NAME_ARRAY[@]}"; do
 
+        LOAD_PARAMETERS_PATH="gs://maxlog-eu/${CHECKPOINT_NAME}/checkpoints/${CHECKPOINT}/items"
+        TARGET_REPO="${CHECKPOINT_NAME}_${CHECKPOINT}"
+
+        # Check if the checkpoint exists
+        if ! gsutil -q stat "${LOAD_PARAMETERS_PATH}/*"; then
+            echo "Error: Checkpoint ${CHECKPOINT} for ${CHECKPOINT_NAME} does not exist at ${LOAD_PARAMETERS_PATH}."
+            exit 1
+        fi
+
+        # Check if the repository already exists on Hugging Face
+        if huggingface-cli repo list "$ORGANIZATION" | grep -q "^${TARGET_REPO}$"; then
+            echo "Error: Repository ${TARGET_REPO} already exists in the organization ${ORGANIZATION}."
+            exit 1
+        fi
+
         # Clean up on the disk
         rm -rf "${HOME}/.cache/huggingface/hub/*"
         find "${HOME}/hfrepo" -mindepth 1 -delete
-
-        LOAD_PARAMETERS_PATH="gs://maxlog-eu/${CHECKPOINT_NAME}/checkpoints/${CHECKPOINT}/items"
-        TARGET_REPO="${CHECKPOINT_NAME}_${CHECKPOINT}"
 
         BASE_OUTPUT_DIRECTORY="${HOME}/modeltemp"
         RUN_NAME="CheckpointExportHF"
