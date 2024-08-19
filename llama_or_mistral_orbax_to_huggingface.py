@@ -25,7 +25,7 @@ python3 MaxText/llama_or_mistral_ckpt.py --base-model-path <path/to/meta/ckpt> \
 
 python3 MaxText/llama_or_mistral_orbax_to_huggingface.py MaxText/configs/base.yml 
             base_output_directory=path/to/saving/intermediate_MaxText_files
-            load_parameters_path=/path/to/MaxText/checkpoint run_name=<your run name> model_name=<llama2 or mistral> 
+            load_parameters_path=/path/to/MaxText/checkpoint run_name=<your run name> model_name=<llama2-7b, llama3-8b or mistral-7b> 
             hf_model_path=/local/path/to/save/HF/model/to
 
 Note that we are saving the converted HuggingFace model to a local path. You can write to a GCS location by mounting
@@ -70,8 +70,11 @@ def load_hf_model(model_size):
   """
   if model_size == "llama2-7b":
     model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
+  elif model_size == "llama3-8b":
+    model = MistralForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
   elif model_size == "mistral-7b":
     model = MistralForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
+
   else:
     raise NotImplementedError
 
