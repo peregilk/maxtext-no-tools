@@ -5,7 +5,7 @@
 # pip install torch
 # pip install pyconfig 
 cp convert_pipeline.sh ../maxtext/
-cp llama_or_mistral_orbax_to_huggingface.py ../maxtext/
+cp llama_or_mistral_orbax_to_huggingface.py ../maxtext/MaxText/
 cd ../maxtext/
 
 # Script defaults to converting llama3
