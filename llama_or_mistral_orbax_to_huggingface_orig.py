@@ -1,9 +1,10 @@
+
 """
  Copyright 2023 Google LLC
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
  You may obtain a copy of the License at
- https://www.apache.org/licenses/LICENSE-2.0
+      https://www.apache.org/licenses/LICENSE-2.0
  Unless required by applicable law or agreed to in writing, software
  distributed under the License is distributed on an "AS IS" BASIS,
  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -12,16 +13,21 @@
  """
 
 r"""Convert weights from a MaxText model to a HuggingFace model.
+
 Usage:
+
 Get MaxText model weights from a MaxText run
+
 Example cmd:
 To save a ckpt
 python3 MaxText/llama_or_mistral_ckpt.py --base-model-path <path/to/meta/ckpt> \
     --maxtext-model-path <GCS/path/to/save/new/maxtext/ckpt> --model-size llama2-7b
+
 python3 MaxText/llama_or_mistral_orbax_to_huggingface.py MaxText/configs/base.yml 
             base_output_directory=path/to/saving/intermediate_MaxText_files
-            load_parameters_path=/path/to/MaxText/checkpoint run_name=<your run name> model_name=<llama2 or mistral> 
+            load_parameters_path=/path/to/MaxText/checkpoint run_name=<your run name> model_name=<llama2-7b, llama3-8b or mistral-7b> 
             hf_model_path=/local/path/to/save/HF/model/to
+
 Note that we are saving the converted HuggingFace model to a local path. You can write to a GCS location by mounting
 the GCS bucket as a local path using `setup_gcsfuse.sh`, but remember to mount as read+write.
 """
@@ -39,7 +45,7 @@ import max_logging
 import checkpointing
 from generate_param_only_checkpoint import _read_train_checkpoint
 import llama_or_mistral_ckpt
-from transformers import LlamaForCausalLM, MistralForCausalLM
+from transformers import LlamaForCausalLM, MistralForCausalLM, AutoModelForCausalLM
 
 def unpermute_from_match_maxtext_rope(arr):
   """
