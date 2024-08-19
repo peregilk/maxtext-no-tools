@@ -49,9 +49,9 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
             exit 1
         fi
 
-        # Check if the repository already exists on Hugging Face
-        if huggingface-cli repo list "$ORGANIZATION" | grep -q "^${TARGET_REPO}$"; then
-            echo "Error: Repository ${TARGET_REPO} already exists in the organization ${ORGANIZATION}."
+        # Attempt to create the repository on Hugging Face
+        if ! yes | huggingface-cli repo create $TARGET_REPO --organization $ORGANIZATION; then
+            echo "Error: Repository ${TARGET_REPO} already exists or could not be created."
             exit 1
         fi
 
@@ -79,9 +79,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/LICENSE.txt
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/special_tokens_map.json
 
-        # Transfer with Huggingface-cli
-        yes | huggingface-cli repo create $TARGET_REPO --organization $ORGANIZATION
-
+        # Upload files to Hugging Face repository
         for file in *; do huggingface-cli upload "$ORGANIZATION/$TARGET_REPO" "$file"; done
 
     done
