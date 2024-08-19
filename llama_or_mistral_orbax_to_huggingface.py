@@ -71,7 +71,7 @@ def load_hf_model(model_size):
   if model_size == "llama2-7b":
     model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-2-7b-hf")
   elif model_size == "llama3-8b":
-    model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
+    model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
   elif model_size == "mistral-7b":
     model = MistralForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
 
