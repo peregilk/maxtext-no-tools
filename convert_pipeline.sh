@@ -78,8 +78,23 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/LICENSE
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/special_tokens_map.json
 
-        # Upload files to Hugging Face repository
-        for file in *; do hf_transfer upload "$ORGANIZATION/$TARGET_REPO" "$file"; done
+        # Run the embedded Python script to upload files
+        python3 - <<END
+import os
+import hf_transfer
+
+# Configuration from environment variables
+directory = "${HOME}/hfrepo"
+organization = "${ORGANIZATION}"
+repo_name = "${TARGET_REPO}"
+
+# Upload files to Hugging Face
+for file_name in os.listdir(directory):
+    file_path = os.path.join(directory, file_name)
+    if os.path.isfile(file_path):
+        print(f"Uploading {file_path} to {organization}/{repo_name}...")
+        hf_transfer.upload(file_path, organization=organization, repo_name=repo_name)
+END
 
     done
 done
