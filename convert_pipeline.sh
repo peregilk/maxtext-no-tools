@@ -41,7 +41,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
     for CHECKPOINT_NAME in "${CHECKPOINT_NAME_ARRAY[@]}"; do
 
         LOAD_PARAMETERS_PATH="gs://maxlog-eu/${CHECKPOINT_NAME}/checkpoints/${CHECKPOINT}/items"
-        TARGET_REPO="${CHECKPOINT_NAME}_${CHECKPOINT}"
+        TARGET_REPO="orig16_${CHECKPOINT_NAME}_${CHECKPOINT}"
 
         # Check if the checkpoint exists
         if ! gsutil -q stat "${LOAD_PARAMETERS_PATH}/*"; then
@@ -65,7 +65,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
 
         # Change directory and run the Python script with the constants/variables
         cd "${HOME}/maxtext"
-        python ./MaxText/llama_or_mistral_orbax_to_huggingface.py MaxText/configs/base.yml base_output_directory=$BASE_OUTPUT_DIRECTORY load_parameters_path=$LOAD_PARAMETERS_PATH run_name=$RUN_NAME model_name=$MODEL_NAME hf_model_path=$HF_MODEL_PATH
+        python ./MaxText/llama_or_mistral_orbax_to_huggingface_orig16.py MaxText/configs/base.yml base_output_directory=$BASE_OUTPUT_DIRECTORY load_parameters_path=$LOAD_PARAMETERS_PATH run_name=$RUN_NAME model_name=$MODEL_NAME hf_model_path=$HF_MODEL_PATH
         
         ## PUSH TO HUGGINGFACE
 
@@ -78,23 +78,8 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/LICENSE
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/special_tokens_map.json
 
-        # Run the embedded Python script to upload files
-        python3 - <<END
-import os
-import hf_transfer
-
-# Configuration from environment variables
-directory = "${HOME}/hfrepo"
-organization = "${ORGANIZATION}"
-repo_name = "${TARGET_REPO}"
-
-# Upload files to Hugging Face
-for file_name in os.listdir(directory):
-    file_path = os.path.join(directory, file_name)
-    if os.path.isfile(file_path):
-        print(f"Uploading {file_path} to {organization}/{repo_name}...")
-        hf_transfer.upload(file_path, organization=organization, repo_name=repo_name)
-END
+        # Upload files to Hugging Face repository
+        for file in *; do huggingface-cli upload "$ORGANIZATION/$TARGET_REPO" "$file"; done
 
     done
 done
