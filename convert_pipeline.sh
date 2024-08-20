@@ -41,7 +41,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
     for CHECKPOINT_NAME in "${CHECKPOINT_NAME_ARRAY[@]}"; do
 
         LOAD_PARAMETERS_PATH="gs://maxlog-eu/${CHECKPOINT_NAME}/checkpoints/${CHECKPOINT}/items"
-        TARGET_REPO="orig16_${CHECKPOINT_NAME}_${CHECKPOINT}"
+        TARGET_REPO="${CHECKPOINT_NAME}_${CHECKPOINT}"
 
         # Check if the checkpoint exists
         if ! gsutil -q stat "${LOAD_PARAMETERS_PATH}/*"; then
@@ -65,7 +65,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
 
         # Change directory and run the Python script with the constants/variables
         cd "${HOME}/maxtext"
-        python ./MaxText/llama_or_mistral_orbax_to_huggingface_orig16.py MaxText/configs/base.yml base_output_directory=$BASE_OUTPUT_DIRECTORY load_parameters_path=$LOAD_PARAMETERS_PATH run_name=$RUN_NAME model_name=$MODEL_NAME hf_model_path=$HF_MODEL_PATH
+        python ./MaxText/llama_or_mistral_orbax_to_huggingface.py MaxText/configs/base.yml base_output_directory=$BASE_OUTPUT_DIRECTORY load_parameters_path=$LOAD_PARAMETERS_PATH run_name=$RUN_NAME model_name=$MODEL_NAME hf_model_path=$HF_MODEL_PATH
         
         ## PUSH TO HUGGINGFACE
 
