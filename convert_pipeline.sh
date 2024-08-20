@@ -65,7 +65,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
 
         # Change directory and run the Python script with the constants/variables
         cd "${HOME}/maxtext"
-        python ./MaxText/llama_or_mistral_orbax_to_huggingface_orig.py MaxText/configs/base.yml base_output_directory=$BASE_OUTPUT_DIRECTORY load_parameters_path=$LOAD_PARAMETERS_PATH run_name=$RUN_NAME model_name=$MODEL_NAME hf_model_path=$HF_MODEL_PATH
+        python ./MaxText/llama_or_mistral_orbax_to_huggingface_alisa.py MaxText/configs/base.yml base_output_directory=$BASE_OUTPUT_DIRECTORY load_parameters_path=$LOAD_PARAMETERS_PATH run_name=$RUN_NAME model_name=$MODEL_NAME hf_model_path=$HF_MODEL_PATH
         
         ## PUSH TO HUGGINGFACE
 
