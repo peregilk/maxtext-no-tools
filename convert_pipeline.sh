@@ -74,9 +74,8 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
 
         # Get extra files from the specified tokenizer directory
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/tokenizer.json
-        wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/tokenizer.model
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/tokenizer_config.json
-        wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/LICENSE.txt
+        wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/LICENSE
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/special_tokens_map.json
 
         # Upload files to Hugging Face repository
