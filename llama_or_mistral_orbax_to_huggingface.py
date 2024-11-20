@@ -38,7 +38,13 @@ def load_hf_model(model_size):
     elif model_size == "llama3-8b":
         model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
     elif model_size == "llama3.1-8b":
-        model = LlamaForCausalLM.from_pretrained("meta-llama/Meta-Llama-3.1-8B")
+        model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B")
+    elif model_size == "llama3.1-70b":
+        model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-3.1-70B")
+    elif model_size == "llama3.2-1b":
+        model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-3.2-1B")
+    elif model_size == "llama3.2-3b":
+        model = LlamaForCausalLM.from_pretrained("meta-llama/Llama-3.2-3B")
     elif model_size == "mistral-7b":
         model = MistralForCausalLM.from_pretrained("mistralai/Mistral-7B-v0.1")
     else:
@@ -72,6 +78,7 @@ def convert_state_to_hf(training_state, model_size):
     """
 
     if model_size not in llama_or_mistral_ckpt.MODEL_PARAMS_DICT:
+        print(f"Model size: {model_size}")
         raise NotImplementedError
     # Load the model specific parameters
     model_params = llama_or_mistral_ckpt.MODEL_PARAMS_DICT[model_size]
@@ -148,10 +155,12 @@ def convert_state_to_hf(training_state, model_size):
         )
 
     # LM head and layernorm
-    hf_model_params["lm_head.weight"] = torch.tensor(np.asarray(
-        training_state.params['params']["decoder"]["logits_dense"]["kernel"].T),
-        dtype=torch.bfloat16
-    )
+    if "logits_dense" in training_state.params["params"]["decoder"]:
+        hf_model_params["lm_head.weight"] = torch.tensor(np.asarray(
+            training_state.params['params']["decoder"]["logits_dense"]["kernel"].T),
+            dtype=torch.bfloat16
+        )
+
     hf_model_params["model.norm.weight"] = torch.tensor(np.asarray(
         training_state.params['params']["decoder"]["decoder_norm"]["scale"].reshape(base_num_query_heads * head_dim)),
         dtype=torch.bfloat16
