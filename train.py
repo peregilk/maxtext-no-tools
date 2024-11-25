@@ -367,6 +367,10 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   # Optional: Print a small slice of the logratios for inspection
   print("Sample chosen_logratios:", chosen_logratios[0, :10])
   print("Sample rejected_logratios:", rejected_logratios[0, :10])
+
+  print("Valid mask shape:", valid_mask.shape)
+  print("Scaled ratios shape:", scaled_ratios.shape)
+  print("Loss shape before masking:", loss.shape)
      
   # DPO loss from chosen and rejected logratios
   LABEL_SMOOTHING, BETA = config.dpo_label_smoothing, config.dpo_beta
