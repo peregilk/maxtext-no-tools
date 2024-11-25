@@ -822,7 +822,11 @@ def train_loop(config, state=None):
       print("Rejected shape:", example_batch["rejected"].shape)
       print("Sample chosen (first 5 tokens):", example_batch["chosen"][0, :5])
       print("Sample rejected (first 5 tokens):", example_batch["rejected"][0, :5])
-         
+      print("Max token ID in chosen_ids:", jnp.max(chosen_ids))
+      print("Max token ID in rejected_ids:", jnp.max(rejected_ids))
+      print("Mean token ID in chosen_ids:", jnp.mean(chosen_ids))
+      print("Mean token ID in rejected_ids:", jnp.mean(rejected_ids))   
+     
       record_goodput(recorder, config, recorder.record_data_loading_end_time if recorder else None)
       check_example_batch(config, example_batch=example_batch)
       # pylint: disable=not-callable
