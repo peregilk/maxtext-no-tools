@@ -342,6 +342,8 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   
   print("chosen_logits shape (after slicing):", chosen_logits[..., :-1, :].shape)
   print("chosen_ids shape:", chosen_ids[..., None].shape)
+  print("chosen_ref_logits shape:", chosen_ref_logits[..., :-1, :].shape)
+  print("rejected_ref_logits shape:", rejected_ref_logits[..., :-1, :].shape)
 
   chosen_logratios = (
       jnp.take_along_axis(chosen_logits[..., :-1, :], chosen_ids[..., None])[..., 0]
