@@ -267,122 +267,6 @@ def record_activation_metrics(output_metrics, intermediate_outputs, config):
       output_metrics["scalar"][f"activ_stdev/layer_{layer_num:03d}"] = layer["activation_stdev"][0]
 
 
-def _split_dpo_state(state):
-  reference_params = state.params["reference_params"]
-  new_state = state.replace(params={k: v for k, v in state.params.items() if k != "reference_params"})
-  return new_state, reference_params
-
-
-def _merge_dpo_state(state, reference_params):
-  return state.replace(params=dict(state.params, reference_params=reference_params))
-
-
-def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_train=True):
-  """loss_fn for both train and eval.
-
-  Args:
-    model: A nn.Module
-    config: Config of parameters
-    data: Batch of data to apply to the model
-    dropout_rng: A key to use to generate rng for dropout
-    params: Model params
-    is_train: True for train_step and False for eval_step
-
-  Returns:
-    loss: average loss
-    aux: a dictionary including intermediate_outputs, total_loss, and total_weights
-  """
-  # inputs, targets, segments, positions = apply_args
-  rng1, aqt_rng = jax.random.split(dropout_rng)
-
-  # decimate proportion of data when per_device_batch_size<1
-  if is_train:
-    for k, v in data.items():
-      data[k] = v[: config.micro_batch_size_to_train_on, :]
-
-  # for DPO we don't support packed sequence (they shouldn't be present in the first place)
-  data["chosen_segmentation"] = (data["chosen_segmentation"] == 1).astype(jnp.int32)
-  data["rejected_segmentation"] = (data["rejected_segmentation"] == 1).astype(jnp.int32)
-  data["chosen_position"] = data["chosen_position"] * (data["chosen_segmentation"] == 1)
-  data["rejected_position"] = data["rejected_position"] * (data["rejected_segmentation"] == 1)
-
-  # concatenated model and reference model forward pass
-  inputs = jnp.concatenate([data["chosen"], data["rejected"]], 0)
-  inputs_position = jnp.concatenate([data["chosen_position"], data["rejected_position"]], 0)
-  inputs_segmentation = jnp.concatenate([data["chosen_segmentation"], data["rejected_segmentation"]], 0)
-
-  logits, intermediate_outputs = model.apply(
-      params,
-      inputs,
-      inputs_position,
-      decoder_segment_ids=inputs_segmentation,
-      enable_dropout=config.enable_dropout if is_train else False,
-      rngs={"dropout": rng1, "params": aqt_rng},
-      mutable="intermediates",
-  )
-  ref_logits = model.apply(
-      {"params": reference_params},
-      inputs,
-      inputs_position,
-      decoder_segment_ids=inputs_segmentation,
-      enable_dropout=False,
-      rngs={"dropout": rng1, "params": aqt_rng},
-  )
-  ref_logits = jax.lax.stop_gradient(ref_logits)
-
-  # difference between chosen & chosen reference logits and for rejected
-  chosen_ids = data["chosen"][..., :-1]
-  rejected_ids = data["rejected"][..., :-1]
-  chosen_segmentation = data["chosen_segmentation"][..., :-1]
-  rejected_segmentation = data["rejected_segmentation"][..., :-1]
-     
-  n_logits = logits.shape[-3] // 2  # (..., batch, sequence, vocab)
-  chosen_logits, rejected_logits = logits[..., :n_logits, :, :], logits[..., n_logits:, :, :]
-  chosen_ref_logits, rejected_ref_logits = ref_logits[..., :n_logits, :, :], ref_logits[..., n_logits:, :, :]
-  
-  print("chosen_logits shape:", chosen_logits.shape)
-  print("rejected_logits shape:", rejected_logits.shape)
-  print("chosen_ids shape:", chosen_ids.shape)
-  print("rejected_ids shape:", rejected_ids.shape)
-
-  chosen_logratios = (
-      jnp.take_along_axis(chosen_logits[..., :-1, :], chosen_ids[..., None], axis=-1)[..., 0]
-      - jnp.take_along_axis(chosen_ref_logits[..., :-1, :], chosen_ids[..., None], axis=-1)[..., 0]
-  )
-  rejected_logratios = (
-      jnp.take_along_axis(rejected_logits[..., :-1, :], rejected_ids[..., None], axis=-1)[..., 0]
-      - jnp.take_along_axis(rejected_ref_logits[..., :-1, :], rejected_ids[..., None], axis=-1)[..., 0]
-  )
-
-  # DPO loss from chosen and rejected logratios
-  LABEL_SMOOTHING, BETA = config.dpo_label_smoothing, config.dpo_beta
-  scaled_ratios = BETA * (chosen_logratios - rejected_logratios)
-  loss = -jax.nn.log_sigmoid(scaled_ratios) * (1 - LABEL_SMOOTHING) - jax.nn.log_sigmoid(-scaled_ratios) * LABEL_SMOOTHING
-  common_prefix_mask = jnp.cumsum(chosen_ids == rejected_ids) == 0
-  valid_mask = (chosen_segmentation != 0) & (rejected_segmentation != 0) & ~common_prefix_mask
-  assert loss.shape == valid_mask.shape
-  total_loss = jnp.sum(loss * valid_mask)
-  total_weights = jnp.sum(valid_mask)
-  loss = jnp.mean(jnp.sum(loss * valid_mask, -1) / (jnp.sum(valid_mask, -1) + EPS))
-
-  moe_lb_loss = 0.0
-  if config.num_experts > 1:
-    nested_key = ("intermediates", "decoder", "layers", "moe_lb_loss")
-    total_moe_lb_loss = maxtext_utils.get_nested_value(intermediate_outputs, nested_key, 0.0)
-    moe_lb_loss = jnp.mean(jnp.array(total_moe_lb_loss))
-    loss += moe_lb_loss
-  assert chosen_logratios.shape == rejected_logratios.shape == valid_mask.shape
-  reward_accuracy = jnp.sum(1 * (chosen_logratios > rejected_logratios) * valid_mask) / jnp.sum(1 * valid_mask)
-  aux = {
-      "intermediate_outputs": intermediate_outputs,
-      "total_loss": total_loss,
-      "total_weights": total_weights,
-      "moe_lb_loss": moe_lb_loss,
-      "reward_accuracy": reward_accuracy,
-  }
-  return loss, aux
-
-
 def loss_fn(model, config, data, dropout_rng, params, is_train=True):
   """loss_fn for both train and eval.
 
@@ -442,7 +326,7 @@ def loss_fn(model, config, data, dropout_rng, params, is_train=True):
   return loss, aux
 
 
-def train_step(model, config, state, data, dropout_rng):
+def train_step(model, config, state_mesh_shardings, state, data, dropout_rng):
   """
 
   Args:
@@ -457,17 +341,11 @@ def train_step(model, config, state, data, dropout_rng):
     rng2: A new rng key that can be used in future calls.
 
   """
-  reference_params, extra_dpo_arg, _loss_fn = [], [], loss_fn
-  if config.use_dpo:
-    state, reference_params = _split_dpo_state(state)
-    extra_dpo_arg = [reference_params]
-    _loss_fn = dpo_loss_fn
-
   if config.gradient_accumulation_steps > 1:
 
     def accumulate_gradient(acc_grad_and_loss, data):
-      grad_func = jax.value_and_grad(_loss_fn, argnums=4, has_aux=True)
-      (_, aux), cur_batch_gradient = grad_func(model, config, data, dropout_rng, state.params, *extra_dpo_arg, is_train=True)
+      grad_func = jax.value_and_grad(loss_fn, argnums=4, has_aux=True)
+      (_, aux), cur_batch_gradient = grad_func(model, config, data, dropout_rng, state.params, is_train=True)
       acc_grad_and_loss["loss"] += aux["total_loss"]
       acc_grad_and_loss["moe_lb_loss"] += aux["moe_lb_loss"]
       acc_grad_and_loss["grad"] = jax.tree_util.tree_map(
@@ -496,8 +374,12 @@ def train_step(model, config, state, data, dropout_rng):
     raw_grads = jax.tree_util.tree_map(lambda arr: arr / grad_and_loss["total_weights"], grad_and_loss["grad"])
     aux = jax.tree_map(lambda x: jnp.sum(x, axis=0), aux)
   else:
-    grad_func = jax.value_and_grad(_loss_fn, argnums=4, has_aux=True)
-    (loss, aux), raw_grads = grad_func(model, config, data, dropout_rng, state.params, *extra_dpo_arg, is_train=True)
+    if config.optimizer_memory_host_offload:
+      cast_params = jax.device_put(state.params, max_utils.with_memory_kind(state_mesh_shardings.params, "device"))
+      cast_params = max_utils.cast_to_bf16(cast_params)
+      state = state.replace(params=cast_params)
+    grad_func = jax.value_and_grad(loss_fn, argnums=4, has_aux=True)
+    (loss, aux), raw_grads = grad_func(model, config, data, dropout_rng, state.params, is_train=True)
   intermediate_outputs = aux["intermediate_outputs"]
   total_weights = aux["total_weights"]
   moe_lb_loss = aux["moe_lb_loss"]
@@ -506,39 +388,38 @@ def train_step(model, config, state, data, dropout_rng):
     grads = maxtext_utils.apply_gradient_clipping(raw_grads, state, config.gradient_clipping_threshold)
   else:
     grads = raw_grads
+  if config.optimizer_memory_host_offload:
+    state = state.replace(
+        opt_state=jax.device_put(
+            state.opt_state,
+            jax.tree_util.tree_map(lambda x: x.with_memory_kind(kind="device"), state_mesh_shardings.opt_state),
+        )
+    )
   new_state = state.apply_gradients(grads=grads)
+
+  scalar_metrics = {
+      "learning/loss": loss,
+      "learning/moe_lb_loss": moe_lb_loss,
+      "learning/total_weights": total_weights,
+  }
+  if not config.optimizer_memory_host_offload:
+    scalar_metrics["learning/grad_norm"] = max_utils.l2norm_pytree(grads)
+    scalar_metrics["learning/raw_grad_norm"] = max_utils.l2norm_pytree(raw_grads)
+    scalar_metrics["learning/param_norm"] = max_utils.l2norm_pytree(new_state.params)
   metrics = {
-      "scalar": {
-          "learning/loss": loss,
-          "learning/moe_lb_loss": moe_lb_loss,
-          "learning/total_weights": total_weights,
-          "learning/grad_norm": max_utils.l2norm_pytree(grads),
-          "learning/raw_grad_norm": max_utils.l2norm_pytree(raw_grads),
-          "learning/param_norm": max_utils.l2norm_pytree(new_state.params),
-          "learning/dpo_reward_accuracy": aux.get("reward_accuracy", 0.0),
-      },
+      "scalar": scalar_metrics,
       "scalars": {},
   }
 
   if config.record_internal_nn_metrics:
     record_activation_metrics(metrics, intermediate_outputs, config)
 
-  if config.use_dpo:
-    new_state = _merge_dpo_state(new_state, reference_params)
-
   return new_state, metrics
 
 
 def eval_step(model, config, state, data, dropout_rng):
   """eval_step no backprop and new state compared with train_step."""
-
-  reference_params, extra_dpo_arg, _loss_fn = [], [], loss_fn
-  if config.use_dpo:
-    state, reference_params = _split_dpo_state(state)
-    extra_dpo_arg = [reference_params]
-    _loss_fn = dpo_loss_fn
-
-  eval_loss_fn = functools.partial(_loss_fn, model, config, data, dropout_rng, *extra_dpo_arg, is_train=False)
+  eval_loss_fn = functools.partial(loss_fn, model, config, data, dropout_rng, is_train=False)
   loss, aux = eval_loss_fn(state.params)
   total_loss = aux["total_loss"]
   total_weights = aux["total_weights"]
@@ -670,7 +551,7 @@ def setup_train_loop(config):
   record_goodput(recorder, config, recorder.record_training_preparation_start_time if recorder else None)
   data_iterator, eval_data_iterator = create_data_iterator(config, mesh)
 
-  state, state_mesh_annotations, data_iterator = max_utils.setup_training_state(
+  state, _, state_mesh_shardings, data_iterator = max_utils.setup_training_state(
       model, data_iterator, tx, config, init_rng, mesh, checkpoint_manager
   )
 
@@ -682,7 +563,7 @@ def setup_train_loop(config):
       init_rng,
       writer,
       checkpoint_manager,
-      state_mesh_annotations,
+      state_mesh_shardings,
       model,
       mesh,
       learning_rate_schedule,
@@ -708,7 +589,7 @@ def train_loop(config, state=None):
       init_rng,
       writer,
       checkpoint_manager,
-      state_mesh_annotations,
+      state_mesh_shardings,
       model,
       mesh,
       learning_rate_schedule,
@@ -716,13 +597,6 @@ def train_loop(config, state=None):
       eval_data_iterator,
       state,
   ) = setup_train_loop(config)
-
-  if config.use_dpo:
-    if "reference_params" not in state.params:
-      reference_params = jax.tree.map(jnp.copy, state.params["params"])
-      state = _merge_dpo_state(state, reference_params)
-    state_mesh_annotations = _merge_dpo_state(state_mesh_annotations, state_mesh_annotations.params["params"])
-
   # pylint: disable=line-too-long
   (
       functional_train,
@@ -730,7 +604,7 @@ def train_loop(config, state=None):
       out_shard_train,
       static_argnums_train,
       donate_argnums_train,
-  ) = maxtext_utils.get_functional_train_with_signature(train_step, mesh, state_mesh_annotations, model, config)
+  ) = maxtext_utils.get_functional_train_with_signature(train_step, mesh, state_mesh_shardings, model, config)
 
   if eval_data_iterator:
     # pylint: disable=line-too-long
@@ -740,7 +614,7 @@ def train_loop(config, state=None):
         out_shard_eval,
         static_argnums_eval,
         donate_argnums_eval,
-    ) = maxtext_utils.get_functional_eval_with_signature(eval_step, mesh, state_mesh_annotations, model, config)
+    ) = maxtext_utils.get_functional_eval_with_signature(eval_step, mesh, state_mesh_shardings, model, config)
 
   num_model_parameters = max_utils.calculate_num_params_from_pytree(state.params)
   max_logging.log(f"number parameters: {num_model_parameters/1e9:.3f} billion")
@@ -801,20 +675,6 @@ def train_loop(config, state=None):
     with jax.profiler.StepTraceAnnotation("train", step_num=step):
       record_goodput(recorder, config, recorder.record_data_loading_start_time if recorder else None)
       example_batch = load_next_batch(data_iterator, example_batch, config)
-      
-      print("Debugging data_iterator output:")
-      print("Batch keys:", example_batch.keys())
-      if "chosen" in example_batch:
-          print("Chosen shape:", example_batch["chosen"].shape)
-          print("Sample chosen data:", example_batch["chosen"][0, :5])  # Print a small sample
-      if "rejected" in example_batch:
-          print("Rejected shape:", example_batch["rejected"].shape)
-          print("Sample rejected data:", example_batch["rejected"][0, :5])  # Print a small sample
-      if "chosen_segmentation" in example_batch:
-          print("Chosen segmentation shape:", example_batch["chosen_segmentation"].shape)
-      if "rejected_segmentation" in example_batch:
-          print("Rejected segmentation shape:", example_batch["rejected_segmentation"].shape)
-         
       record_goodput(recorder, config, recorder.record_data_loading_end_time if recorder else None)
       check_example_batch(config, example_batch=example_batch)
       # pylint: disable=not-callable
