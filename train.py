@@ -801,6 +801,10 @@ def train_loop(config, state=None):
     with jax.profiler.StepTraceAnnotation("train", step_num=step):
       record_goodput(recorder, config, recorder.record_data_loading_start_time if recorder else None)
       example_batch = load_next_batch(data_iterator, example_batch, config)
+      print("Example batch keys:", example_batch.keys())
+      print("Chosen shape:", example_batch["chosen"].shape)
+      print("Rejected shape:", example_batch["rejected"].shape)
+         
       record_goodput(recorder, config, recorder.record_data_loading_end_time if recorder else None)
       check_example_batch(config, example_batch=example_batch)
       # pylint: disable=not-callable
