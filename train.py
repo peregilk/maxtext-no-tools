@@ -346,14 +346,28 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   print("rejected_ref_logits shape:", rejected_ref_logits[..., :-1, :].shape)
 
   chosen_logratios = (
-      jnp.take_along_axis(chosen_logits[..., :-1, :], chosen_ids[..., None])[..., 0]
-      - jnp.take_along_axis(chosen_ref_logits[..., :-1, :], chosen_ids[..., None])[..., 0]
+      jnp.take_along_axis(chosen_logits[..., :-1, :], chosen_ids[..., None], axis=-1)[..., 0]
+      - jnp.take_along_axis(chosen_ref_logits[..., :-1, :], chosen_ids[..., None], axis=-1)[..., 0]
   )
   rejected_logratios = (
-      jnp.take_along_axis(rejected_logits[..., :-1, :], rejected_ids[..., None], -1)[..., 0]
-      - jnp.take_along_axis(rejected_ref_logits[..., :-1, :], rejected_ids[..., None], -1)[..., 0]
+      jnp.take_along_axis(rejected_logits[..., :-1, :], rejected_ids[..., None], axis=-1)[..., 0]
+      - jnp.take_along_axis(rejected_ref_logits[..., :-1, :], rejected_ids[..., None], axis=-1)[..., 0]
   )
 
+  # Debugging shapes and values of logratios
+  print("chosen_logratios shape:", chosen_logratios.shape)
+  print("rejected_logratios shape:", rejected_logratios.shape)
+
+  # Check for NaNs or Infs in logratios
+  print("Any NaNs in chosen_logratios:", jnp.isnan(chosen_logratios).any())
+  print("Any NaNs in rejected_logratios:", jnp.isnan(rejected_logratios).any())
+  print("Any Infs in chosen_logratios:", jnp.isinf(chosen_logratios).any())
+  print("Any Infs in rejected_logratios:", jnp.isinf(rejected_logratios).any())
+
+  # Optional: Print a small slice of the logratios for inspection
+  print("Sample chosen_logratios:", chosen_logratios[0, :10])
+  print("Sample rejected_logratios:", rejected_logratios[0, :10])
+     
   # DPO loss from chosen and rejected logratios
   LABEL_SMOOTHING, BETA = config.dpo_label_smoothing, config.dpo_beta
   scaled_ratios = BETA * (chosen_logratios - rejected_logratios)
