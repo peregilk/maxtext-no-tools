@@ -368,16 +368,16 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   print("Sample chosen_logratios:", chosen_logratios[0, :10])
   print("Sample rejected_logratios:", rejected_logratios[0, :10])
 
-  print("Valid mask shape:", valid_mask.shape)
-  print("Scaled ratios shape:", scaled_ratios.shape)
-  print("Loss shape before masking:", loss.shape)
      
   # DPO loss from chosen and rejected logratios
   LABEL_SMOOTHING, BETA = config.dpo_label_smoothing, config.dpo_beta
   scaled_ratios = BETA * (chosen_logratios - rejected_logratios)
+  print("Scaled ratios shape:", scaled_ratios.shape)
   loss = -jax.nn.log_sigmoid(scaled_ratios) * (1 - LABEL_SMOOTHING) - jax.nn.log_sigmoid(-scaled_ratios) * LABEL_SMOOTHING
+  print("Loss shape before masking:", loss.shape)
   common_prefix_mask = jnp.cumsum(chosen_ids == rejected_ids) == 0
   valid_mask = (chosen_segmentation != 0) & (rejected_segmentation != 0) & ~common_prefix_mask
+  print("Valid mask shape:", valid_mask.shape)
   assert loss.shape == valid_mask.shape
   total_loss = jnp.sum(loss * valid_mask)
   total_weights = jnp.sum(valid_mask)
