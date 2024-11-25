@@ -331,10 +331,16 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   ref_logits = jax.lax.stop_gradient(ref_logits)
 
   # difference between chosen & chosen reference logits and for rejected
-  chosen_ids = data["chosen"][..., 1:]
-  rejected_ids = data["rejected"][..., 1:]
-  chosen_segmentation = data["chosen_segmentation"][..., 1:]
-  rejected_segmentation = data["rejected_segmentation"][..., 1:]
+  #chosen_ids = data["chosen"][..., 1:]
+  #rejected_ids = data["rejected"][..., 1:]
+  #chosen_segmentation = data["chosen_segmentation"][..., 1:]
+  #rejected_segmentation = data["rejected_segmentation"][..., 1:]
+     
+  # Use the full sequence length
+  chosen_ids = data["chosen"]
+  rejected_ids = data["rejected"]
+  chosen_segmentation = data["chosen_segmentation"]
+  rejected_segmentation = data["rejected_segmentation"]
 
   n_logits = logits.shape[-3] // 2  # (..., batch, sequence, vocab)
   chosen_logits, rejected_logits = logits[..., :n_logits, :, :], logits[..., n_logits:, :, :]
