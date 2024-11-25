@@ -339,11 +339,6 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   n_logits = logits.shape[-3] // 2  # (..., batch, sequence, vocab)
   chosen_logits, rejected_logits = logits[..., :n_logits, :, :], logits[..., n_logits:, :, :]
   chosen_ref_logits, rejected_ref_logits = ref_logits[..., :n_logits, :, :], ref_logits[..., n_logits:, :, :]
-  
-  print("chosen_logits shape (after slicing):", chosen_logits[..., :-1, :].shape)
-  print("chosen_ids shape:", chosen_ids[..., None].shape)
-  print("chosen_ref_logits shape:", chosen_ref_logits[..., :-1, :].shape)
-  print("rejected_ref_logits shape:", rejected_ref_logits[..., :-1, :].shape)
 
   chosen_logratios = (
       jnp.take_along_axis(chosen_logits[..., :-1, :], chosen_ids[..., None], axis=-1)[..., 0]
@@ -354,34 +349,12 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
       - jnp.take_along_axis(rejected_ref_logits[..., :-1, :], rejected_ids[..., None], axis=-1)[..., 0]
   )
 
-  # Debugging shapes and values of logratios
-  print("chosen_logratios shape:", chosen_logratios.shape)
-  print("rejected_logratios shape:", rejected_logratios.shape)
-
-  # Check for NaNs or Infs in logratios
-  print("Any NaNs in chosen_logratios:", jnp.isnan(chosen_logratios).any())
-  print("Any NaNs in rejected_logratios:", jnp.isnan(rejected_logratios).any())
-  print("Any Infs in chosen_logratios:", jnp.isinf(chosen_logratios).any())
-  print("Any Infs in rejected_logratios:", jnp.isinf(rejected_logratios).any())
-
-  # Optional: Print a small slice of the logratios for inspection
-  print("Sample chosen_logratios:", chosen_logratios[0, :10])
-  print("Sample rejected_logratios:", rejected_logratios[0, :10])
-
-     
   # DPO loss from chosen and rejected logratios
   LABEL_SMOOTHING, BETA = config.dpo_label_smoothing, config.dpo_beta
   scaled_ratios = BETA * (chosen_logratios - rejected_logratios)
-  print("Scaled ratios shape:", scaled_ratios.shape)
   loss = -jax.nn.log_sigmoid(scaled_ratios) * (1 - LABEL_SMOOTHING) - jax.nn.log_sigmoid(-scaled_ratios) * LABEL_SMOOTHING
-  print("Loss shape before masking:", loss.shape)
   common_prefix_mask = jnp.cumsum(chosen_ids == rejected_ids, axis=-1) == 0
-
-  print("chosen_segmentation shape:", chosen_segmentation.shape)
-  print("rejected_segmentation shape:", rejected_segmentation.shape)
-  print("common_prefix_mask shape:", common_prefix_mask.shape)
   valid_mask = (chosen_segmentation != 0) & (rejected_segmentation != 0) & ~common_prefix_mask
-  print("Valid mask shape:", valid_mask.shape)
   assert loss.shape == valid_mask.shape
   total_loss = jnp.sum(loss * valid_mask)
   total_weights = jnp.sum(valid_mask)
@@ -823,18 +796,6 @@ def train_loop(config, state=None):
     with jax.profiler.StepTraceAnnotation("train", step_num=step):
       record_goodput(recorder, config, recorder.record_data_loading_start_time if recorder else None)
       example_batch = load_next_batch(data_iterator, example_batch, config)
-      # Debugging example_batch
-      print(f"Step {step}: Debugging example batch")
-      print("Batch keys:", example_batch.keys())
-      print("Chosen shape:", example_batch["chosen"].shape)
-      print("Rejected shape:", example_batch["rejected"].shape)
-      print("Sample chosen (first 5 tokens):", example_batch["chosen"][0, :5])
-      print("Sample rejected (first 5 tokens):", example_batch["rejected"][0, :5])
-      print("Max token ID in chosen_ids:", jnp.max(example_batch["chosen"]))
-      print("Max token ID in rejected_ids:", jnp.max(example_batch["rejected"]))
-      print("Mean token ID in chosen_ids:", jnp.mean(example_batch["chosen"]))
-      print("Mean token ID in rejected_ids:", jnp.mean(example_batch["rejected"]))   
-     
       record_goodput(recorder, config, recorder.record_data_loading_end_time if recorder else None)
       check_example_batch(config, example_batch=example_batch)
       # pylint: disable=not-callable
