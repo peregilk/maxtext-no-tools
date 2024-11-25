@@ -801,9 +801,19 @@ def train_loop(config, state=None):
     with jax.profiler.StepTraceAnnotation("train", step_num=step):
       record_goodput(recorder, config, recorder.record_data_loading_start_time if recorder else None)
       example_batch = load_next_batch(data_iterator, example_batch, config)
-      print("Example batch keys:", example_batch.keys())
-      print("Chosen shape:", example_batch["chosen"].shape)
-      print("Rejected shape:", example_batch["rejected"].shape)
+      
+      print("Debugging data_iterator output:")
+      print("Batch keys:", example_batch.keys())
+      if "chosen" in example_batch:
+          print("Chosen shape:", example_batch["chosen"].shape)
+          print("Sample chosen data:", example_batch["chosen"][0, :5])  # Print a small sample
+      if "rejected" in example_batch:
+          print("Rejected shape:", example_batch["rejected"].shape)
+          print("Sample rejected data:", example_batch["rejected"][0, :5])  # Print a small sample
+      if "chosen_segmentation" in example_batch:
+          print("Chosen segmentation shape:", example_batch["chosen_segmentation"].shape)
+      if "rejected_segmentation" in example_batch:
+          print("Rejected segmentation shape:", example_batch["rejected_segmentation"].shape)
          
       record_goodput(recorder, config, recorder.record_data_loading_end_time if recorder else None)
       check_example_batch(config, example_batch=example_batch)
