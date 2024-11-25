@@ -375,7 +375,7 @@ def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_t
   print("Scaled ratios shape:", scaled_ratios.shape)
   loss = -jax.nn.log_sigmoid(scaled_ratios) * (1 - LABEL_SMOOTHING) - jax.nn.log_sigmoid(-scaled_ratios) * LABEL_SMOOTHING
   print("Loss shape before masking:", loss.shape)
-  common_prefix_mask = jnp.cumsum(chosen_ids == rejected_ids) == 0
+  common_prefix_mask = jnp.cumsum(chosen_ids == rejected_ids, axis=-1) == 0
 
   print("chosen_segmentation shape:", chosen_segmentation.shape)
   print("rejected_segmentation shape:", rejected_segmentation.shape)
