@@ -841,8 +841,8 @@ def train_loop(config, state=None):
             print("Embedding layer missing in params!")
 
         print("Eval batch keys:", eval_batch.keys())
-        print("Eval batch 'inputs' shape:", eval_batch["inputs"].shape)
-        print("Eval batch 'targets' shape:", eval_batch["targets"].shape)
+        #print("Eval batch 'inputs' shape:", eval_batch["inputs"].shape)
+        #print("Eval batch 'targets' shape:", eval_batch["targets"].shape)
            
         with mesh, nn_partitioning.axis_rules(config.logical_axis_rules):
           eval_metrics = p_eval_step(state, eval_batch, nextrng)
