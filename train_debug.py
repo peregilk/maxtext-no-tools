@@ -2,7 +2,7 @@
 Copyright 2023 Google LLC
 
 Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
+You may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
      https://www.apache.org/licenses/LICENSE-2.0
@@ -14,15 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-# pylint: disable=g-bad-todo, abstract-method, consider-using-with, ungrouped-imports
-"""Training loop and Decoding of the model with extra debugging info."""
-
 import datetime
 import os
 import sys
 import functools
 import time
-
 from typing import Sequence, Optional
 from absl import app
 from flax import linen as nn
@@ -43,7 +39,6 @@ import pyconfig
 import pathwaysutils  # pylint: disable=unused-import
 
 from vertex_tensorboard import VertexTensorboardManager
-# Placeholder: internal
 
 from input_pipeline.input_pipeline_interface import create_data_iterator
 from layers import models
@@ -59,11 +54,8 @@ from cloud_tpu_diagnostics.configuration import diagnostic_configuration
 from cloud_tpu_diagnostics.configuration import stack_trace_configuration
 
 from layers import quantizations
-
 from ml_goodput_measurement import goodput
 from ml_goodput_measurement import monitoring
-
-# pylint: disable=too-many-positional-arguments
 
 Transformer = models.Transformer
 EPS = 1e-8
@@ -80,36 +72,18 @@ def validate_train_config(config):
   if config.quantization == "fp8":
     assert (
         config.gradient_accumulation_steps == 1
-    ), "fp8 can't be used with gradient_accumulation_steps right now. Use other quantization or set gradient_accumulation_steps to 1"
-
+    ), "fp8 can't be used with gradient_accumulation_steps right now."
 
 def get_first_step(state):
   with jax.spmd_mode("allow_all"):
     return int(state.step)
 
-
 def load_next_batch(train_iter, example_batch, config):
-  """Loads the next batch. Can keep reusing the same batch for performance reasons"""
+  """Loads the next batch."""
   batch = example_batch if (config.reuse_example_batch and example_batch is not None) else next(train_iter)
-
-  # Debug info about batch
-  max_logging.log("[DEBUG] Loaded a new batch:")
-  max_logging.log(f"[DEBUG] Keys: {list(batch.keys())}")
-  for k, v in batch.items():
-    max_logging.log(f"[DEBUG] {k}: shape={v.shape}, dtype={v.dtype}")
-
-  if config.use_dpo and "chosen_segmentation" not in batch:
-    max_logging.log("[DEBUG] DPO mode is on but 'chosen_segmentation' is missing right after load_next_batch.")
-    max_logging.log(f"[DEBUG] Available keys: {list(batch.keys())}")
-    max_logging.log(f"[DEBUG] Batch shapes: {{k: v.shape for k,v in batch.items()}}")
-    max_logging.log("[DEBUG] Exiting due to missing DPO keys on first batch.")
-    sys.exit(1)
-
   return batch
 
-
 def record_scalar_metrics(metrics, step_time_delta, per_device_tflops, lr, per_device_tokens):
-  """Records scalar metrics to be written to tensorboard"""
   metrics["scalar"].update({"perf/step_time_seconds": step_time_delta.total_seconds()})
   metrics["scalar"].update({"perf/per_device_tflops": per_device_tflops})
   metrics["scalar"].update({"perf/per_device_tflops_per_sec": per_device_tflops / step_time_delta.total_seconds()})
@@ -117,10 +91,8 @@ def record_scalar_metrics(metrics, step_time_delta, per_device_tflops, lr, per_d
   metrics["scalar"].update({"perf/per_device_tokens_per_sec": per_device_tokens / step_time_delta.total_seconds()})
   metrics["scalar"].update({"learning/current_learning_rate": lr})
 
-
 _buffered_step = None
 _buffered_metrics = None
-
 
 def write_metrics(writer, local_metrics_file, running_gcs_metrics, metrics, step, config, is_training=True):
   metrics_to_write, steps_to_write = None, None
@@ -137,10 +109,8 @@ def write_metrics(writer, local_metrics_file, running_gcs_metrics, metrics, step
 
   if metrics_to_write:
     write_metrics_to_tensorboard(writer, metrics_to_write, steps_to_write, config, is_training)
-
     if config.metrics_file:
       max_utils.write_metrics_locally(metrics_to_write, steps_to_write, config, local_metrics_file, is_training)
-
     if config.gcs_metrics and jax.process_index() == 0:
       running_gcs_metrics = max_utils.write_metrics_for_gcs(
           metrics_to_write, steps_to_write, config, running_gcs_metrics, is_training
@@ -149,7 +119,6 @@ def write_metrics(writer, local_metrics_file, running_gcs_metrics, metrics, step
   if is_training:
     _buffered_step = step
     _buffered_metrics = metrics
-
 
 def write_metrics_to_tensorboard(writer, metrics, step, config, is_training=True):
   with jax.spmd_mode("allow_all"):
@@ -161,7 +130,6 @@ def write_metrics_to_tensorboard(writer, metrics, step, config, is_training=True
 
     if is_training:
       full_log = step % config.log_period == 0
-
       max_logging.log(
           f"completed step: {step}, seconds: {metrics['scalar']['perf/step_time_seconds']:.3f}, "
           f"TFLOP/s/device: {metrics['scalar']['perf/per_device_tflops_per_sec']:.3f}, "
@@ -169,18 +137,15 @@ def write_metrics_to_tensorboard(writer, metrics, step, config, is_training=True
           f"total_weights: {metrics['scalar']['learning/total_weights']}, "
           f"loss: {metrics['scalar']['learning/loss']:.3f}"
       )
-
       if full_log and jax.process_index() == 0:
         max_logging.log(f"To see full metrics 'tensorboard --logdir={config.tensorboard_dir}'")
         writer.flush()
-
 
 def clear_buffered_metrics():
   global _buffered_step
   global _buffered_metrics
   _buffered_step = None
   _buffered_metrics = None
-
 
 def save_checkpoint(
     checkpoint_manager,
@@ -201,7 +166,6 @@ def save_checkpoint(
           f"Waited {time.time() - blocking_until_ready_start} seconds for step "
           f"{step} to finish before starting checkpointing."
       )
-
   chunk_byte_size = _DEFAULT_OCDBT_TARGET_DATA_FILE_SIZE
   if config:
     chunk_byte_size = config.checkpoint_storage_target_data_file_size_bytes
@@ -234,277 +198,44 @@ def save_checkpoint(
     )
 
 
-def record_activation_metrics(output_metrics, intermediate_outputs, config):
-  if config.scan_layers:
-    metrics_dict = intermediate_outputs["intermediates"]["decoder"]["decoder"]
-    for layer_num in range(config.num_decoder_layers):
-      output_metrics["scalar"][f"activ_fraction_zero/layer_{layer_num:03d}"] = metrics_dict["activation_fraction_zero"][0][
-          layer_num
-      ]
-      output_metrics["scalar"][f"activ_mean/layer_{layer_num:03d}"] = metrics_dict["activation_mean"][0][layer_num]
-      output_metrics["scalar"][f"activ_stdev/layer_{layer_num:03d}"] = metrics_dict["activation_stdev"][0][layer_num]
-  else:
-    for layer_num in range(config.num_decoder_layers):
-      layer = intermediate_outputs["intermediates"]["decoder"][f"layers_{layer_num}"]
-      output_metrics["scalar"][f"activ_fraction_zero/layer_{layer_num:03d}"] = layer["activation_fraction_zero"][0]
-      output_metrics["scalar"][f"activ_mean/layer_{layer_num:03d}"] = layer["activation_mean"][0]
-      output_metrics["scalar"][f"activ_stdev/layer_{layer_num:03d}"] = layer["activation_stdev"][0]
-
-
 def _split_dpo_state(state):
   reference_params = state.params["reference_params"]
   new_state = state.replace(params={k: v for k, v in state.params.items() if k != "reference_params"})
   return new_state, reference_params
 
-
 def _merge_dpo_state(state, reference_params):
   return state.replace(params=dict(state.params, reference_params=reference_params))
 
+def dpo_loss_fn(*args, **kwargs):
+  # We won't actually run steps now, just returning a dummy value because we exit early.
+  # This function won't be called before exit in our debugging run.
+  return 0.0, {"total_loss":0.0, "total_weights":0.0, "moe_lb_loss":0.0, "reward_accuracy":0.0, "intermediate_outputs":{}}
 
-def dpo_loss_fn(model, config, data, dropout_rng, params, reference_params, is_train=True):
-  rng1, aqt_rng = jax.random.split(dropout_rng)
+def loss_fn(*args, **kwargs):
+  # Similarly, not running steps long enough to reach here before exit.
+  return 0.0, {"total_loss":0.0, "total_weights":0.0, "moe_lb_loss":0.0, "intermediate_outputs":{}}
 
-  if is_train:
-    for k, v in data.items():
-      data[k] = v[: config.micro_batch_size_to_train_on, :]
+def train_step(*args, **kwargs):
+  # Not used here since we exit before training.
+  return args[3], {"scalar":{"learning/loss":0.0,"learning/total_weights":0.0}}
 
-  # Just before processing, print some debug info about keys and shapes
-  if "chosen_segmentation" not in data:
-    max_logging.log("[DEBUG] In dpo_loss_fn: 'chosen_segmentation' missing from data.")
-    max_logging.log(f"[DEBUG] Keys now: {list(data.keys())}")
-    for k, arr in data.items():
-      max_logging.log(f"[DEBUG] {k}: shape={arr.shape}, dtype={arr.dtype}")
-    sys.exit(1)
-
-  data["chosen_segmentation"] = (data["chosen_segmentation"] == 1).astype(jnp.int32)
-  data["rejected_segmentation"] = (data["rejected_segmentation"] == 1).astype(jnp.int32)
-  data["chosen_position"] = data["chosen_position"] * (data["chosen_segmentation"] == 1)
-  data["rejected_position"] = data["rejected_position"] * (data["rejected_segmentation"] == 1)
-
-  inputs = jnp.concatenate([data["chosen"], data["rejected"]], 0)
-  inputs_position = jnp.concatenate([data["chosen_position"], data["rejected_position"]], 0)
-  inputs_segmentation = jnp.concatenate([data["chosen_segmentation"], data["rejected_segmentation"]], 0)
-
-  logits, intermediate_outputs = model.apply(
-      params,
-      inputs,
-      inputs_position,
-      decoder_segment_ids=inputs_segmentation,
-      enable_dropout=config.enable_dropout if is_train else False,
-      rngs={"dropout": rng1, "params": aqt_rng},
-      mutable="intermediates",
-  )
-  ref_logits = model.apply(
-      {"params": reference_params},
-      inputs,
-      inputs_position,
-      decoder_segment_ids=inputs_segmentation,
-      enable_dropout=False,
-      rngs={"dropout": rng1, "params": aqt_rng},
-  )
-  ref_logits = jax.lax.stop_gradient(ref_logits)
-
-  chosen_ids = data["chosen"][..., 1:]
-  rejected_ids = data["rejected"][..., 1:]
-  chosen_segmentation = data["chosen_segmentation"][..., 1:]
-  rejected_segmentation = data["rejected_segmentation"][..., 1:]
-  n_logits = logits.shape[-3] // 2
-  chosen_logits, rejected_logits = logits[:n_logits, :, :], logits[n_logits:, :, :]
-  chosen_ref_logits, rejected_ref_logits = ref_logits[:n_logits, :, :], ref_logits[n_logits:, :, :]
-
-  common_prefix_mask = jnp.cumsum(chosen_ids != rejected_ids, axis=-1) == 0
-  valid_seq_mask = (chosen_segmentation != 0) & (rejected_segmentation != 0) & ~common_prefix_mask
-
-  chosen_logps_seq = jnp.take_along_axis(
-      jax.nn.log_softmax(chosen_logits[..., :-1, :], axis=-1), chosen_ids[..., None], axis=-1
-  )[..., 0]
-  chosen_logps = jnp.sum(chosen_logps_seq * valid_seq_mask, axis=-1)
-  chosen_ref_logps_seq = jnp.take_along_axis(
-      jax.nn.log_softmax(chosen_ref_logits[..., :-1, :], axis=-1), chosen_ids[..., None], axis=-1
-  )[..., 0]
-  chosen_ref_logps = jnp.sum(chosen_ref_logps_seq * valid_seq_mask, axis=-1)
-  chosen_logratios = chosen_logps - chosen_ref_logps
-
-  rejected_logps_seq = jnp.take_along_axis(
-      jax.nn.log_softmax(rejected_logits[..., :-1, :], axis=-1), rejected_ids[..., None], axis=-1
-  )[..., 0]
-  rejected_logps = jnp.sum(rejected_logps_seq * valid_seq_mask, axis=-1)
-  rejected_ref_logps_seq = jnp.take_along_axis(
-      jax.nn.log_softmax(rejected_ref_logits[..., :-1, :], axis=-1), rejected_ids[..., None], axis=-1
-  )[..., 0]
-  rejected_ref_logps = jnp.sum(rejected_ref_logps_seq * valid_seq_mask, axis=-1)
-  rejected_logratios = rejected_logps - rejected_ref_logps
-
-  LABEL_SMOOTHING, BETA = config.dpo_label_smoothing, config.dpo_beta
-  logratios_delta = BETA * (chosen_logratios - rejected_logratios)
-  loss = (
-      -jax.nn.log_sigmoid(BETA * logratios_delta) * (1 - LABEL_SMOOTHING)
-      - jax.nn.log_sigmoid(-BETA * logratios_delta) * LABEL_SMOOTHING
-  )
-  total_loss, total_weights = jnp.sum(loss), jnp.sum(valid_seq_mask)
-  loss = jnp.sum(loss * (jnp.sum(valid_seq_mask, axis=-1) + 1e-3)) / total_weights
-
-  moe_lb_loss = 0.0
-  if config.num_experts > 1:
-    nested_key = ("intermediates", "decoder", "layers", "moe_lb_loss")
-    total_moe_lb_loss = maxtext_utils.get_nested_value(intermediate_outputs, nested_key, 0.0)
-    moe_lb_loss = jnp.mean(jnp.array(total_moe_lb_loss))
-    loss += moe_lb_loss
-  reward_accuracy = jnp.mean(chosen_logratios > rejected_logratios)
-  aux = {
-      "intermediate_outputs": intermediate_outputs,
-      "total_loss": total_loss,
-      "total_weights": total_weights,
-      "moe_lb_loss": moe_lb_loss,
-      "reward_accuracy": reward_accuracy,
-  }
-  return loss, aux
-
-
-def loss_fn(model, config, data, dropout_rng, params, is_train=True):
-  rng1, aqt_rng = jax.random.split(dropout_rng)
-  if is_train:
-    for k, v in data.items():
-      data[k] = v[: config.micro_batch_size_to_train_on, :]
-  else:
-    for k, v in data.items():
-      data[k] = v[: config.micro_batch_size_to_eval_on, :]
-
-  logits, intermediate_outputs = model.apply(
-      params,
-      data["inputs"],
-      data["inputs_position"],
-      decoder_segment_ids=data["inputs_segmentation"],
-      enable_dropout=config.enable_dropout if is_train else False,
-      rngs={"dropout": rng1, "params": aqt_rng},
-      mutable="intermediates",
-  )
-  one_hot_targets = jax.nn.one_hot(data["targets"], config.vocab_size)
-  xent, _ = max_utils.cross_entropy_with_logits(logits, one_hot_targets, 0.0)
-  xent = nn.with_logical_constraint(xent, ("activation_embed_and_logits_batch", "activation_length"))
-  xent = xent * (data["targets_segmentation"] != 0)
-  total_loss = jnp.sum(xent)
-  total_weights = jnp.sum(data["targets_segmentation"] != 0)
-  loss = total_loss / (total_weights + EPS)
-  moe_lb_loss = 0.0
-  if config.num_experts > 1:
-    nested_key = ("intermediates", "decoder", "layers", "moe_lb_loss")
-    total_moe_lb_loss = maxtext_utils.get_nested_value(intermediate_outputs, nested_key, 0.0)
-    moe_lb_loss = jnp.mean(jnp.array(total_moe_lb_loss))
-    loss += moe_lb_loss
-  aux = {
-      "intermediate_outputs": intermediate_outputs,
-      "total_loss": total_loss,
-      "total_weights": total_weights,
-      "moe_lb_loss": moe_lb_loss,
-  }
-  return loss, aux
-
-
-def train_step(model, config, state_mesh_shardings, state, data, dropout_rng):
-  reference_params, reference_params_sharding, extra_dpo_args, _loss_fn = [], [], [], loss_fn
-  if config.use_dpo:
-    state, reference_params = _split_dpo_state(state)
-    state_mesh_shardings, reference_params_sharding = _split_dpo_state(state_mesh_shardings)
-    extra_dpo_args = [reference_params]
-    _loss_fn = dpo_loss_fn
-
-  grad_func = jax.value_and_grad(_loss_fn, argnums=4, has_aux=True)
-  (loss, aux), raw_grads = grad_func(model, config, data, dropout_rng, state.params, *extra_dpo_args, is_train=True)
-
-  intermediate_outputs = aux["intermediate_outputs"]
-  total_weights = aux["total_weights"]
-  moe_lb_loss = aux["moe_lb_loss"]
-
-  if config.gradient_clipping_threshold > 0:
-    grads = maxtext_utils.apply_gradient_clipping(raw_grads, state, config.gradient_clipping_threshold)
-  else:
-    grads = raw_grads
-  new_state = state.apply_gradients(grads=grads)
-
-  scalar_metrics = {
-      "learning/loss": loss,
-      "learning/moe_lb_loss": moe_lb_loss,
-      "learning/total_weights": total_weights,
-  }
-  if not config.optimizer_memory_host_offload:
-    scalar_metrics["learning/grad_norm"] = max_utils.l2norm_pytree(grads)
-    scalar_metrics["learning/raw_grad_norm"] = max_utils.l2norm_pytree(raw_grads)
-    scalar_metrics["learning/param_norm"] = max_utils.l2norm_pytree(new_state.params)
-  if config.use_dpo:
-    scalar_metrics["learning/dpo_reward_accuracy"] = aux["reward_accuracy"]
-  metrics = {
-      "scalar": scalar_metrics,
-      "scalars": {},
-  }
-
-  if config.record_internal_nn_metrics:
-    record_activation_metrics(metrics, intermediate_outputs, config)
-
-  if config.use_dpo:
-    new_state = _merge_dpo_state(new_state, reference_params)
-
-  return new_state, metrics
-
-
-def eval_step(model, config, state, data, dropout_rng):
-  reference_params, extra_dpo_args, _loss_fn = [], [], loss_fn
-  if config.use_dpo:
-    state, reference_params = _split_dpo_state(state)
-    extra_dpo_args = [reference_params]
-    _loss_fn = dpo_loss_fn
-
-  eval_loss_fn = functools.partial(_loss_fn, model, config, data, dropout_rng, is_train=False)
-  loss, aux = eval_loss_fn(state.params, *extra_dpo_args)
-  total_loss = aux["total_loss"]
-  total_weights = aux["total_weights"]
-  moe_lb_loss = aux["moe_lb_loss"]
-  metrics = {
-      "scalar": {
-          "evaluation/loss": loss,
-          "evaluation/total_loss": total_loss,
-          "evaluation/total_weights": total_weights,
-          "evaluation/moe_lb_loss": moe_lb_loss,
-      },
-  }
-  if config.use_dpo:
-    metrics["scalar"]["evaluation/dpo_reward_accuracy"] = aux["reward_accuracy"]
-
-  return metrics
-
+def eval_step(*args, **kwargs):
+  return {"scalar":{"evaluation/loss":0.0,"evaluation/total_loss":0.0,"evaluation/total_weights":0.0,"evaluation/moe_lb_loss":0.0}}
 
 def create_goodput_recorder(config):
-  if config.enable_goodput_recording:
-    logger_name = f"goodput_{config.run_name}"
-    recorder = goodput.GoodputRecorder(config.run_name, logger_name, jax.process_index() == 0)
-    return recorder
   return None
 
-
-def record_goodput(
-    recorder,
-    config,
-    record_func,
-    *args,
-):
-  if recorder and config.enable_goodput_recording:
-    record_func(*args)
-
+def record_goodput(*args, **kwargs):
+  pass
 
 def check_example_batch(config, example_batch):
-  if config.max_checkify:
-    jittable_f = checkify.checkify(lambda x: checkify.check(jnp.any(x > -1), "Batch contains bad synthetic data!"))
-    err, _ = jax.jit(jittable_f)(example_batch["inputs"][: config.global_batch_size_to_train_on, :])
-    err.throw()
-
+  pass
 
 def setup_mesh_and_model(config):
   init_rng = random.PRNGKey(config.init_weights_seed)
   writer = max_utils.initialize_summary_writer(config)
-
   devices_array = max_utils.create_device_mesh(config)
   mesh = Mesh(devices_array, config.mesh_axes)
-
   quant = quantizations.configure_quantization(config)
   model = Transformer(config, mesh, quant=quant)
   learning_rate_schedule = max_utils.create_learning_rate_schedule(config)
@@ -536,33 +267,26 @@ def setup_mesh_and_model(config):
         use_ocdbt,
         use_zarr3,
     )
-
   return init_rng, writer, checkpoint_manager, mesh, model, learning_rate_schedule, tx
-
 
 def setup_train_loop(config):
   recorder = create_goodput_recorder(config)
-  record_goodput(recorder, config, recorder.record_tpu_init_start_time if recorder else None)
+  record_goodput(recorder, config, None)
   init_rng, writer, checkpoint_manager, mesh, model, learning_rate_schedule, tx = setup_mesh_and_model(config)
-  record_goodput(recorder, config, recorder.record_tpu_init_end_time if recorder else None)
-  record_goodput(recorder, config, recorder.record_training_preparation_start_time if recorder else None)
+  record_goodput(recorder, config, None)
 
-  max_logging.log(f"[DEBUG] Creating data iterator with dataset_type={config.dataset_type}, use_dpo={config.use_dpo}")
-  max_logging.log(f"[DEBUG] per_device_batch_size={config.per_device_batch_size}, allow_split_physical_axes={config.allow_split_physical_axes}, ici_tensor_parallelism={config.ici_tensor_parallelism}")
+  max_logging.log(f"[DEBUG] setup_train_loop: use_dpo={config.use_dpo}, per_device_batch_size={config.per_device_batch_size}, dataset_type={config.dataset_type}")
 
   data_iterator, eval_data_iterator = create_data_iterator(config, mesh)
-  max_logging.log("[DEBUG] Data iterator created. About to setup training state.")
+  max_logging.log("[DEBUG] Data iterator created.")
 
   state, _, state_mesh_shardings, data_iterator = max_utils.setup_training_state(
       model, data_iterator, tx, config, init_rng, mesh, checkpoint_manager
   )
 
-  if not config.using_pipeline_parallelism:
-    maxtext_utils.assert_params_sufficiently_sharded(state.params, mesh, tolerance=0.02)
-
   if config.use_dpo:
+    max_logging.log("[DEBUG] DPO mode enabled. Attempting to restore reference parameters...")
     abstract_state, _, _ = max_utils.get_abstract_state(model, tx, config, init_rng, mesh, is_training=True)
-    max_logging.log(f"Restoring reference parameters for DPO from '{os.path.join(str(config.checkpoint_dir), str(0))}'")
     try:
       step0_restored, _ = checkpointing.load_state_if_possible(
           checkpoint_manager,
@@ -579,11 +303,7 @@ def setup_train_loop(config):
       reference_params = step0_restored["items"].params["params"]
       state = _merge_dpo_state(state, reference_params)
     else:
-      max_logging.log(
-          f"Could not restore reference parameters for DPO from '{os.path.join(str(config.checkpoint_dir), str(0))}'"
-      )
-
-  record_goodput(recorder, config, recorder.record_training_preparation_end_time if recorder else None)
+      max_logging.log("[DEBUG] Could not restore reference parameters for DPO.")
   return (
       init_rng,
       writer,
@@ -597,188 +317,28 @@ def setup_train_loop(config):
       state,
   )
 
-
 def train_loop(config, state=None):
-  recorder = create_goodput_recorder(config)
-  record_goodput(recorder, config, recorder.record_job_start_time if recorder else None)
-
-  (
-      init_rng,
-      writer,
-      checkpoint_manager,
-      state_mesh_shardings,
-      model,
-      mesh,
-      learning_rate_schedule,
-      data_iterator,
-      eval_data_iterator,
-      state,
-  ) = setup_train_loop(config)
-
-  if config.use_dpo:
-    if "reference_params" not in state.params:
-      reference_params = jax.tree.map(jnp.copy, state.params["params"])
-      state = _merge_dpo_state(state, reference_params)
-    state_mesh_shardings = _merge_dpo_state(state_mesh_shardings, state_mesh_shardings.params["params"])
-
-  (
-      functional_train,
-      in_shard_train,
-      out_shard_train,
-      static_argnums_train,
-      donate_argnums_train,
-  ) = maxtext_utils.get_functional_train_with_signature(train_step, mesh, state_mesh_shardings, model, config)
-
-  if eval_data_iterator:
-    (
-        functional_eval,
-        in_shard_eval,
-        out_shard_eval,
-        static_argnums_eval,
-        donate_argnums_eval,
-    ) = maxtext_utils.get_functional_eval_with_signature(eval_step, mesh, state_mesh_shardings, model, config)
-  else:
-    functional_eval, p_eval_step = None, None
-
-  num_model_parameters = max_utils.calculate_num_params_from_pytree(state.params)
-  max_logging.log(f"number parameters: {num_model_parameters/1e9:.3f} billion")
-  per_device_tflops, _, _ = maxtext_utils.calculate_tflops_training_per_device(config)
-  per_device_tokens = maxtext_utils.calculate_tokens_training_per_device(config)
-
-  max_utils.add_text_to_summary_writer("num_model_parameters", str(num_model_parameters), writer)
-  max_utils.add_text_to_summary_writer("libtpu_init_args", os.environ["LIBTPU_INIT_ARGS"], writer)
-  max_utils.add_config_to_summary_writer(config, writer)
-
-  if config.compiled_trainstep_file != "":
-    print("Loading the compiled function...", flush=True)
-    p_train_step = maxtext_utils.load_compiled(config, functional_train, state)
-    p_eval_step = None
-    print("Loaded compiled function!", flush=True)
-  else:
-    p_train_step = jax.jit(
-        functional_train,
-        in_shardings=in_shard_train,
-        out_shardings=out_shard_train,
-        static_argnums=static_argnums_train,
-        donate_argnums=donate_argnums_train,
-    )
-
-    if eval_data_iterator:
-      p_eval_step = jax.jit(
-          functional_eval,
-          in_shardings=in_shard_eval,
-          out_shardings=out_shard_eval,
-          static_argnums=static_argnums_eval,
-          donate_argnums=donate_argnums_eval,
-      )
-
-  local_metrics_file = open(config.metrics_file, "a", encoding="utf8") if config.metrics_file else None
-  running_gcs_metrics = [] if config.gcs_metrics else None
+  (init_rng, writer, checkpoint_manager, state_mesh_shardings,
+   model, mesh, learning_rate_schedule, data_iterator, eval_data_iterator, state) = setup_train_loop(config)
 
   start_step = get_first_step(state)
-  first_profiling_step = start_step + config.skip_first_n_steps_for_profiler
-  if config.profiler != "" and first_profiling_step >= config.steps:
-    raise ValueError("Profiling requested but initial profiling step set past training final step")
-  last_profiling_step = np.clip(first_profiling_step + config.profiler_steps - 1, first_profiling_step, config.steps - 1)
-
   example_batch = None
-  last_step_completion = datetime.datetime.now()
-  prof = profiler.Profiler(config)
-  for step in np.arange(start_step, config.steps):
-    if step == first_profiling_step:
-      if config.profile_cleanly:
-        jax.block_until_ready(state)
-      prof.activate()
 
-    with jax.profiler.StepTraceAnnotation("train", step_num=step):
-      record_goodput(recorder, config, recorder.record_data_loading_start_time if recorder else None)
-      # Load just one batch and if fail, exit:
-      example_batch = load_next_batch(data_iterator, example_batch, config)
-      record_goodput(recorder, config, recorder.record_data_loading_end_time if recorder else None)
-      check_example_batch(config, example_batch=example_batch)
+  # Load the first batch and print debug info, then exit
+  example_batch = load_next_batch(data_iterator, example_batch, config)
+  max_logging.log("[DEBUG] First batch loaded.")
+  max_logging.log(f"[DEBUG] Keys in batch: {list(example_batch.keys())}")
+  for k, v in example_batch.items():
+    max_logging.log(f"[DEBUG] {k}: shape={v.shape}, dtype={v.dtype}")
 
-      # Additional debug info before train step
-      max_logging.log(f"[DEBUG] Step {step}: use_dpo={config.use_dpo}, global_batch_size_to_train_on={config.global_batch_size_to_train_on}, micro_batch_size_to_train_on={config.micro_batch_size_to_train_on}")
-      max_logging.log(f"[DEBUG] Device count: {jax.device_count()}")
+  # Check if chosen_segmentation present
+  if "chosen_segmentation" in example_batch:
+    max_logging.log("[DEBUG] 'chosen_segmentation' found. Exiting now.")
+  else:
+    max_logging.log("[DEBUG] 'chosen_segmentation' NOT found. Exiting now.")
 
-      nextrng = jax.jit(jax.random.fold_in)(init_rng, step)
-      record_goodput(recorder, config, recorder.record_step_start_time if recorder else None, step)
-      with mesh, nn_partitioning.axis_rules(config.logical_axis_rules):
-        state, metrics = p_train_step(state, example_batch, nextrng)
-
-    new_time = datetime.datetime.now()
-    record_scalar_metrics(
-        metrics, new_time - last_step_completion, per_device_tflops, learning_rate_schedule(step), per_device_tokens
-    )
-    last_step_completion = new_time
-
-    if checkpoint_manager is not None:
-      state_to_save = state if not config.use_dpo else _split_dpo_state(state)[0]
-      if save_checkpoint(checkpoint_manager, int(step), state_to_save, config.dataset_type, data_iterator, config):
-        max_logging.log(f"saved a checkpoint at step {step}")
-
-      if checkpoint_manager.reached_preemption(step):
-        checkpoint_manager.wait_until_finished()
-        sys.exit()
-
-    write_metrics(writer, local_metrics_file, running_gcs_metrics, metrics, step, config)
-
-    if config.eval_interval > 0 and step > start_step and (step + 1) % config.eval_interval == 0:
-      assert eval_data_iterator
-      cumulative_eval_metrics = {
-          "scalar": {
-              "eval/total_loss": 0.0,
-              "eval/total_weights": 0.0,
-              "eval/avg_loss": 0.0,
-              "eval/moe_lb_loss": 0.0,
-          }
-      }
-      eval_dpo_reward_accuracy = 0.0
-      eval_step_count = 0
-      for eval_batch in eval_data_iterator:
-        if config.eval_steps > 0 and eval_step_count >= config.eval_steps:
-          break
-        with mesh, nn_partitioning.axis_rules(config.logical_axis_rules):
-          eval_metrics = p_eval_step(state, eval_batch, nextrng)
-        cumulative_eval_metrics["scalar"]["eval/total_loss"] += float(eval_metrics["scalar"]["evaluation/total_loss"])
-        cumulative_eval_metrics["scalar"]["eval/total_weights"] += float(eval_metrics["scalar"]["evaluation/total_weights"])
-        cumulative_eval_metrics["scalar"]["eval/moe_lb_loss"] += float(eval_metrics["scalar"]["evaluation/moe_lb_loss"])
-        eval_dpo_reward_accuracy += float(eval_metrics["scalar"].get("evaluation/dpo_reward_accuracy", 0.0))
-        eval_step_count += 1
-        max_logging.log(f"Completed eval step {eval_step_count}")
-      eval_loss = (
-          cumulative_eval_metrics["scalar"]["eval/total_loss"]
-          / (cumulative_eval_metrics["scalar"]["eval/total_weights"] + EPS)
-          + cumulative_eval_metrics["scalar"]["eval/moe_lb_loss"] / eval_step_count
-      )
-      cumulative_eval_metrics["scalar"]["eval/avg_loss"] = eval_loss
-      if config.use_dpo:
-        cumulative_eval_metrics["scalar"]["eval/dpo_reward_accuracy"] = eval_dpo_reward_accuracy / eval_step_count
-      write_metrics(
-          writer, local_metrics_file, running_gcs_metrics, cumulative_eval_metrics, step, config, is_training=False
-      )
-      max_logging.log(
-          f"average loss after {step=}: {eval_step_count=}, {eval_loss=},"
-          f" total_weights={cumulative_eval_metrics['scalar']['eval/total_weights']}"
-      )
-      if eval_loss <= config.target_eval_loss:
-        max_logging.log(f"Early stop and exit loop after reaching {config.target_eval_loss=}")
-        prof.deactivate()
-        break
-
-    if step == last_profiling_step:
-      if config.profile_cleanly:
-        jax.block_until_ready(state)
-      prof.deactivate()
-
-  if checkpoint_manager is not None:
-    checkpoint_manager.wait_until_finished()
-  write_metrics(writer, local_metrics_file, running_gcs_metrics, metrics, config.steps - 1, config)
-  max_utils.close_summary_writer(writer)
-  record_goodput(recorder, config, recorder.record_job_end_time if recorder else None)
-  clear_buffered_metrics()
-  return state
-
+  # Exit immediately after checking the first batch
+  sys.exit(1)
 
 def main(argv: Sequence[str]) -> None:
   jax.config.update("jax_default_prng_impl", "unsafe_rbg")
@@ -807,6 +367,7 @@ def main(argv: Sequence[str]) -> None:
     )
     goodput_monitor.start_goodput_uploader()
     max_logging.log("Started Goodput upload to Tensorboard in the background!")
+
   debug_config = debug_configuration.DebugConfig(
       stack_trace_config=stack_trace_configuration.StackTraceConfig(
           collect_stack_trace=config.collect_stack_trace,
@@ -817,7 +378,6 @@ def main(argv: Sequence[str]) -> None:
   diagnostic_config = diagnostic_configuration.DiagnosticConfig(debug_config)
   with diagnostic.diagnose(diagnostic_config):
     train_loop(config)
-
 
 if __name__ == "__main__":
   app.run(main)
