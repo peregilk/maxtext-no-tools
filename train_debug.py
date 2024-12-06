@@ -722,7 +722,6 @@ def setup_train_loop(config):
           abstract_unboxed_pre_state=abstract_state,
           enable_single_replica_ckpt_restoring=False,
           dataset_type=config.dataset_type,
-          step=0,
       )
     except FileNotFoundError:
       step0_restored = None
