@@ -5,17 +5,23 @@ set -euo pipefail
 export GOOGLE_APPLICATION_CREDENTIALS="/home/perk/.config/gcloud/application_default_credentials.json"
 export CLOUDSDK_CONFIG="$HOME/.config/gcloud"
 
-# Disable TPU detection for CPU-only execution
+# Disable TPU detection and TPU metadata fetching
 export TPU_NAME=""
 export XRT_TPU_CONFIG=""
+export TPU_IP_ADDRESS=""
+export TPU_METADATA_URL=""
 
-# Force JAX to use CPU, limit device count, and reduce logging verbosity
+# Force JAX to use CPU only by setting both JAX_PLATFORM_NAME and JAX_PLATFORMS,
+# and limit the device count via XLA_FLAGS.
 export JAX_PLATFORM_NAME=cpu
+export JAX_PLATFORMS=cpu
 export XLA_FLAGS="--xla_force_host_platform_device_count=1"
-export TF_CPP_MIN_LOG_LEVEL=2
 
-# Hide GPUs from JAX to prevent backend initialization hang
+# Hide GPUs from JAX
 export CUDA_VISIBLE_DEVICES=""
+
+# Reduce TensorFlow logging verbosity
+export TF_CPP_MIN_LOG_LEVEL=2
 
 # Enable faster transfers via hf_transfer in huggingface_hub
 export HF_HUB_ENABLE_HF_TRANSFER=1
@@ -93,6 +99,28 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
     done
 done
 
+# Function to upload a file with retries
+upload_file_with_retry() {
+    local file="$1"
+    local max_retries=3
+    local attempt=0
+    local success=0
+    while [ $attempt -lt $max_retries ]; do
+        if huggingface-cli upload "$ORGANIZATION/$TARGET_REPO" "$file"; then
+            success=1
+            break
+        else
+            attempt=$((attempt + 1))
+            echo "Error uploading $file. Attempt $attempt of $max_retries. Retrying in 10 seconds..."
+            sleep 10
+        fi
+    done
+    if [ $success -ne 1 ]; then
+        echo "Failed to upload $file after $max_retries attempts. Exiting."
+        exit 1
+    fi
+}
+
 # Iterate through each combination of checkpoints and checkpoint names
 for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
     for CHECKPOINT_NAME in "${CHECKPOINT_NAME_ARRAY[@]}"; do
@@ -153,11 +181,10 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/LICENSE
         wget https://huggingface.co/${TOKENIZER_DIR}/raw/main/special_tokens_map.json
 
-        # Upload each file in the current directory using huggingface-cli.
-        # With HF_HUB_ENABLE_HF_TRANSFER=1 set, this will use the faster Rust-based backend.
+        # Upload each file in the current directory using huggingface-cli with retry.
         for file in *; do
             if [ -f "$file" ]; then
-                huggingface-cli upload "$ORGANIZATION/$TARGET_REPO" "$file"
+                upload_file_with_retry "$file"
             fi
         done
 
