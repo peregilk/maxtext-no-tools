@@ -26,6 +26,12 @@ export TF_CPP_MIN_LOG_LEVEL=2
 # Enable faster transfers via hf_transfer in huggingface_hub
 export HF_HUB_ENABLE_HF_TRANSFER=1
 
+# --- Add these lines to fully disable distributed JAX ---
+unset JAX_COORDINATOR_ADDRESS
+unset JAX_PROCESS_COUNT
+unset JAX_PROCESS_INDEX
+# --------------------------------------------------------
+
 # Function to display usage information
 usage() {
     echo "Usage: $0 --checkpoints CHECKPOINTS --checkpoint_names CHECKPOINT_NAMES [--organization ORGANIZATION] [--tokenizer_dir TOKENIZER_DIR] [--model_name MODEL_NAME] [--bucket_name BUCKET_NAME] [--overwrite_repo]"
@@ -144,7 +150,7 @@ for CHECKPOINT in "${CHECKPOINT_ARRAY[@]}"; do
 
         # Run the Python conversion script (in CPU mode)
         cd "${WORK_DIR}/maxtext"
-        python ./MaxText/llama_mistral_mixtral_orbax_to_hf.py \
+        python -m MaxText.llama_mistral_mixtral_orbax_to_hf \
             MaxText/configs/base.yml \
             base_output_directory="$BASE_OUTPUT_DIRECTORY" \
             load_parameters_path="$LOAD_PARAMETERS_PATH" \
