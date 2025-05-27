@@ -106,9 +106,11 @@ def load_hf_model(model_size, model_dtype=torch.bfloat16):
     try:
         config = AutoConfig.from_pretrained(hf_model_identifier, token="")
     except Exception as e:
-        max_logging.log(f"Could not load config for {hf_model_identifier} directly: {e}. "
-                            f"Falling back to Llama-3.1-8B config structure for {model_size} and hoping for compatibility.")
-        config = AutoConfig.from_pretrained("meta-llama/Llama-3.1-8B", token="")
+        max_logging.log(f"ERROR: Could not load config for {hf_model_identifier}: {e}")
+        max_logging.log("Exiting: Unable to load correct model config. Check that the repo exists and is accessible.")
+        import sys
+        sys.exit(1)
+        
     config.torch_dtype = model_dtype
     model = AutoModelForCausalLM.from_config(config)
   else:
