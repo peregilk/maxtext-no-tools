@@ -106,7 +106,7 @@ def load_hf_model(model_size, model_dtype=torch.bfloat16):
     try:
         config = AutoConfig.from_pretrained(hf_model_identifier, token="")
     except Exception as e:
-        max_logging.warning(f"Could not load config for {hf_model_identifier} directly: {e}. "
+        max_logging.log(f"Could not load config for {hf_model_identifier} directly: {e}. "
                             f"Falling back to Llama-3.1-8B config structure for {model_size} and hoping for compatibility.")
         config = AutoConfig.from_pretrained("meta-llama/Llama-3.1-8B", token="")
     config.torch_dtype = model_dtype
@@ -242,7 +242,7 @@ def convert_state_to_hf(training_state, model_size, hf_dtype=torch.bfloat16):
         np.asarray(training_state.params["params"]["decoder"]["logits_dense"]["kernel"].T), dtype=hf_dtype
     )
   else:
-    max_logging.warning("logits_dense not found in checkpoint, lm_head.weight will be missing.")
+    max_logging.log("logits_dense not found in checkpoint, lm_head.weight will be missing.")
 
   effective_embed_dim = base_num_query_heads * head_dim
   hf_model_params["model.norm.weight"] = torch.tensor(
@@ -268,7 +268,7 @@ def convert_orbax_hf(hf_model_path, config):
     torch.zeros(1, dtype=hf_dtype)
     max_logging.log(f"Using {hf_dtype} for HuggingFace model weights.")
   except (TypeError, RuntimeError):
-    max_logging.warning(f"{hf_dtype} not supported on this system/PyTorch version, falling back to torch.float16.")
+    max_logging.log(f"{hf_dtype} not supported on this system/PyTorch version, falling back to torch.float16.")
     hf_dtype = torch.float16
     try:
         torch.zeros(1, dtype=hf_dtype)
@@ -283,11 +283,11 @@ def convert_orbax_hf(hf_model_path, config):
 
   missing_keys = [k for k in hf_model.state_dict().keys() if k not in new_hf_model_params]
   if missing_keys:
-      max_logging.warning(f"The following Hugging Face model keys are MISSING from the converted parameters: {missing_keys}")
+      max_logging.log(f"The following Hugging Face model keys are MISSING from the converted parameters: {missing_keys}")
 
   extra_keys = [k for k in new_hf_model_params if k not in hf_model.state_dict().keys()]
   if extra_keys:
-      max_logging.warning(f"The following converted parameters are EXTRA and not part of the Hugging Face model: {extra_keys}")
+      max_logging.log(f"The following converted parameters are EXTRA and not part of the Hugging Face model: {extra_keys}")
 
   max_logging.log(f"Saving HuggingFace model to path = {hf_model_path} with dtype {hf_dtype}")
   hf_model.save_pretrained(hf_model_path, state_dict=new_hf_model_params)
