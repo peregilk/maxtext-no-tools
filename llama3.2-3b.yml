@@ -8,6 +8,7 @@ mlp_activations: ["silu", "linear"]
 vocab_size: 128256
 enable_dropout: False
 logits_via_embedding: True
+normalize_embedding_logits: False
 normalization_layer_epsilon: 1.0e-5
 rope_max_timescale: 500_000
 decoder_block: "llama2" # Uses the same decoder block as llama2
